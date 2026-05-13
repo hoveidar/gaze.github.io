@@ -8,36 +8,35 @@ body, html {
   color: #111;
   font-family: sans-serif;
   overflow-x: hidden;
-  /* Eliminate 300ms click delay on touch devices */
-  touch-action: manipulation;
-  background-image:
-    linear-gradient(to right,  rgba(255,255,255,0.2) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255,255,255,0.2) 1px, transparent 1px),
-    conic-gradient(from 90deg at 40% -25%, #ff0000, #ff00ff, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000);
+  touch-action: manipulation; /* no 300ms tap delay */
+  /* Background-image is generated dynamically by main.js (random per session).
+     background-size and a fallback color are set here. */
+  background-color: #12071e;
   background-size: 30px 30px, 30px 30px, 100% 100%;
 }
 
-/* ─── Readable text layer ─────────────────────────────────────────────────── */
+/* ─── Content (hidden under fog) ─────────────────────────────────────────── */
 .content {
   padding: 100px 50px;
   max-width: 800px;
   margin: 0 auto;
   font-size: 2rem;
-  line-height: 1.6;
+  line-height: 1.65;
+}
+
+.credit {
+  font-size: 1rem;
+  color: rgba(17, 17, 17, 0.5);
+  font-style: italic;
+  margin-top: 14px;
 }
 
 @media (max-width: 768px) {
-  .content {
-    padding: 60px 24px;
-    font-size: 1.25rem;
-  }
+  .content     { padding: 60px 24px; font-size: 1.25rem; }
+  .credit      { font-size: 0.85rem; }
 }
-
 @media (max-width: 480px) {
-  .content {
-    padding: 48px 18px;
-    font-size: 1.1rem;
-  }
+  .content     { padding: 48px 18px; font-size: 1.1rem; }
 }
 
 /* ─── Fog canvas ──────────────────────────────────────────────────────────── */
@@ -45,13 +44,82 @@ body, html {
 
 #fog-canvas {
   position: fixed;
-  top: 0;
-  left: 0;
+  top: 0; left: 0;
   width: 100vw;
-  height: 100vh;        /* fallback for older browsers */
-  height: 100dvh;       /* correct mobile viewport (excludes browser chrome) */
-  pointer-events: none; /* clicks pass through for WebGazer calibration */
+  height: 100vh;   /* fallback */
+  height: 100dvh;  /* excludes mobile browser chrome */
+  pointer-events: none;
   z-index: 9999;
+}
+
+/* ─── Intro / instruction card ────────────────────────────────────────────── */
+#intro-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.intro-card {
+  max-width: 440px;
+  width: 100%;
+  padding: 40px 32px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 24px;
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.intro-icon {
+  display: block;
+  font-size: 52px;
+  line-height: 1;
+  margin-bottom: 14px;
+}
+
+.intro-card h2 {
+  margin: 0 0 14px;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.intro-desc {
+  margin: 0 0 28px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+#start-btn {
+  display: block;
+  width: 100%;
+  background: #22ee88;
+  color: #000;
+  border: none;
+  padding: 15px 32px;
+  border-radius: 30px;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: 0 6px 24px rgba(34, 238, 136, 0.45);
+  transition: transform 0.13s ease, box-shadow 0.13s ease;
+}
+#start-btn:hover  { transform: scale(1.03); box-shadow: 0 8px 30px rgba(34,238,136,0.6); }
+#start-btn:active { transform: scale(0.97); }
+
+.intro-note {
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.32);
 }
 
 /* ─── Calibration overlay ─────────────────────────────────────────────────── */
@@ -82,7 +150,8 @@ body, html {
     font-size: 12px;
     white-space: normal;
     text-align: center;
-    max-width: 85vw;
+    max-width: 86vw;
+    padding: 7px 14px;
   }
 }
 
@@ -98,12 +167,12 @@ body, html {
   border-radius: 20px;
   cursor: pointer;
   font-size: 15px;
-  transition: background 0.2s;
+  touch-action: manipulation;
+  transition: background 0.18s;
 }
-#cal-skip:hover  { background: rgba(255,255,255,0.25); }
-#cal-skip:active { background: rgba(255,255,255,0.35); }
+#cal-skip:hover  { background: rgba(255,255,255,0.24); }
+#cal-skip:active { background: rgba(255,255,255,0.34); }
 
-/* Calibration dot */
 #cal-dot {
   position: absolute;
   width: 32px;
@@ -118,15 +187,11 @@ body, html {
 }
 
 @media (pointer: coarse) {
-  /* Larger tap target on touch screens */
-  #cal-dot {
-    width: 44px;
-    height: 44px;
-  }
+  #cal-dot { width: 46px; height: 46px; }
 }
 
 @keyframes cal-pulse {
-  0%   { transform: translate(-50%,-50%) scale(1);    box-shadow: 0 0 0 0   rgba(34,238,136,0.6); }
-  65%  { transform: translate(-50%,-50%) scale(1.15); box-shadow: 0 0 0 18px rgba(34,238,136,0);   }
-  100% { transform: translate(-50%,-50%) scale(1);    box-shadow: 0 0 0 0   rgba(34,238,136,0);   }
+  0%   { transform: translate(-50%,-50%) scale(1);    box-shadow: 0 0 0 0    rgba(34,238,136,0.6); }
+  65%  { transform: translate(-50%,-50%) scale(1.15); box-shadow: 0 0 0 20px rgba(34,238,136,0);   }
+  100% { transform: translate(-50%,-50%) scale(1);    box-shadow: 0 0 0 0    rgba(34,238,136,0);   }
 }
