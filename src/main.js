@@ -1,5 +1,3 @@
-import './style.css';
-
 const canvas = document.getElementById('fog-canvas');
 const ctx = canvas.getContext('2d');
 

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && cp webgazer.js dist/webgazer.js",
     "preview": "vite preview",
     "deploy": "npm run build && touch dist/.nojekyll && npx gh-pages -d dist"
   },
