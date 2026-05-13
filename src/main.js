@@ -1,155 +1,263 @@
 const canvas = document.getElementById('fog-canvas');
 const ctx = canvas.getContext('2d');
 
-let currentX = window.innerWidth / 2;
-let currentY = window.innerHeight / 2;
-let targetX = window.innerWidth / 2;
-let targetY = window.innerHeight / 2;
+// Smooth brush position (lerps toward target every frame)
+let brushX = window.innerWidth  / 2;
+let brushY = window.innerHeight / 2;
+let targetX = brushX;
+let targetY = brushY;
 
-let appState = 'START'; // Can be 'START', 'BOOTING', 'TRACKING', or 'ERROR'
-let currentError = '';
+// Detect touch-primary device (phone / tablet)
+// (pointer: coarse) = primary pointer is a finger, not a mouse
+const IS_TOUCH = window.matchMedia('(pointer: coarse)').matches;
 
-// 1. Setup the Fog Canvas
+// States: START | BOOTING | CALIBRATING | TRACKING | TOUCH_MODE | ERROR
+let state = 'START';
+let errorMsg = '';
+
+// ─── Calibration grid (9 points, as fractions of screen size) ────────────────
+const CAL_PTS = [
+  [0.5, 0.5],                         // center — start here, easiest gaze
+  [0.1, 0.1], [0.9, 0.1],             // top corners
+  [0.1, 0.9], [0.9, 0.9],             // bottom corners
+  [0.5, 0.1], [0.5, 0.9],             // top/bottom edge centers
+  [0.1, 0.5], [0.9, 0.5],             // left/right edge centers
+];
+const CAL_MARGIN = 58; // px from screen edge so dots aren't clipped
+let calIdx = 0;
+
+const calOverlay = document.getElementById('cal-overlay');
+const calDot     = document.getElementById('cal-dot');
+const calLabel   = document.getElementById('cal-label');
+const calSkip    = document.getElementById('cal-skip');
+
+// ─── Brush settings ───────────────────────────────────────────────────────────
+// Larger radius compensates for WebGazer's inherent ±100px prediction error.
+// Faster lerp means the brush reacts to gaze changes more quickly.
+const LERP   = IS_TOUCH ? 0.20 : 0.14;
+const RADIUS = IS_TOUCH ? 160  : 130;
+
+// ─── Canvas resize — preserves revealed fog holes ────────────────────────────
 function resize() {
-  // Cache the revealed portions of the screen before the browser clears the canvas
-  let savedCanvas;
-  if (appState === 'TRACKING' && canvas.width > 0 && canvas.height > 0) {
-    savedCanvas = document.createElement('canvas');
-    savedCanvas.width = canvas.width;
-    savedCanvas.height = canvas.height;
-    savedCanvas.getContext('2d').drawImage(canvas, 0, 0);
+  let snap = null;
+  if ((state === 'TRACKING' || state === 'TOUCH_MODE') && canvas.width > 0 && canvas.height > 0) {
+    snap = Object.assign(document.createElement('canvas'), {
+      width: canvas.width, height: canvas.height,
+    });
+    snap.getContext('2d').drawImage(canvas, 0, 0);
   }
 
-  canvas.width = window.innerWidth;
+  canvas.width  = window.innerWidth;
   canvas.height = window.innerHeight;
-  
-  fillFog();
 
-  if (appState === 'START') drawStartText();
-  else if (appState === 'BOOTING') drawLoadingText();
-  else if (appState === 'ERROR') drawErrorText();
-  else if (appState === 'TRACKING' && savedCanvas) {
-    // Restore the previously revealed holes on the newly resized canvas
-    ctx.clearRect(0, 0, savedCanvas.width, savedCanvas.height);
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.drawImage(savedCanvas, 0, 0);
+  if (snap) {
+    ctx.drawImage(snap, 0, 0);
+  } else {
+    renderOverlay();
   }
 }
+window.addEventListener('resize', resize);
+resize();
 
+// ─── Drawing helpers ──────────────────────────────────────────────────────────
 function fillFog() {
-  ctx.globalCompositeOperation = 'source-over'; // Ensure new drawing is on top
-  ctx.fillStyle = 'rgba(17, 17, 17, 0.9)'; // Semi-transparent dark fog
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = 'rgba(17, 17, 17, 0.92)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
-function drawStartText() {
-  ctx.fillStyle = 'white';
-  ctx.font = '24px sans-serif';
+function drawText(msg, color, sizePx, dy = 0) {
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = color;
+  ctx.font = `${sizePx}px sans-serif`;
   ctx.textAlign = 'center';
-  ctx.fillText("Click anywhere to start the Eye Tracker", window.innerWidth / 2, window.innerHeight / 2);
+  ctx.textBaseline = 'middle';
+  ctx.fillText(msg, canvas.width / 2, canvas.height / 2 + dy);
 }
 
-function drawLoadingText() {
-  ctx.fillStyle = 'white';
-  ctx.font = '24px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText("Starting camera up... Please allow permissions.", window.innerWidth / 2, window.innerHeight / 2);
-}
-
-function drawErrorText() {
-  ctx.fillStyle = '#111111';
-  ctx.fillRect(0, 0, canvas.width, canvas.height); // Wipe background
-
-  ctx.fillStyle = '#ff6b6b';
-  ctx.font = '24px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText("WebGazer failed to load or camera access was denied.", window.innerWidth / 2, window.innerHeight / 2 - 20);
-  if (currentError) {
-    ctx.fillStyle = '#aaaaaa';
-    ctx.font = '16px monospace';
-    ctx.fillText(`Reason: ${currentError}`, window.innerWidth / 2, window.innerHeight / 2 + 20);
+function renderOverlay() {
+  if (state === 'START') {
+    fillFog();
+    if (IS_TOUCH) {
+      drawText('Tap here, then drag your finger to reveal the text', 'white', 20);
+    } else {
+      drawText('Click anywhere to start the eye tracker', 'white', 22);
+    }
+  } else if (state === 'BOOTING') {
+    fillFog();
+    drawText('Starting camera — allow access when prompted', 'white', 20);
+  } else if (state === 'ERROR') {
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawText('Camera access denied or an error occurred.', '#ff6b6b', 20, -35);
+    if (errorMsg) drawText(errorMsg.slice(0, 72), '#888', 14, 5);
+    drawText('Tap anywhere to try again', '#aaa', 16, 52);
   }
 }
 
-window.addEventListener('resize', resize);
-resize(); // Draw the initial black screen and text
+// ─── Fog brush loop (runs every frame while TRACKING or TOUCH_MODE) ───────────
+function brushLoop() {
+  if (state !== 'TRACKING' && state !== 'TOUCH_MODE') return;
 
-// 2. The Liquid Brush Loop
-function drawBrush() {
-  if (appState !== 'TRACKING') return; // Don't draw the blob until the camera is live
+  brushX += (targetX - brushX) * LERP;
+  brushY += (targetY - brushY) * LERP;
 
-  currentX += (targetX - currentX) * 0.08; // Slower brush movement
-  currentY += (targetY - currentY) * 0.08; // Slower brush movement
-
-  ctx.globalCompositeOperation = 'destination-out'; 
-  
-  // Create a soft radial gradient for a smooth fog-reveal effect
-  const gradient = ctx.createRadialGradient(currentX, currentY, 0, currentX, currentY, 80);
-  gradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
-  gradient.addColorStop(0.5, 'rgba(0, 0, 0, 0.5)');
-  gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-
-  ctx.fillStyle = gradient;
+  ctx.globalCompositeOperation = 'destination-out';
+  const g = ctx.createRadialGradient(brushX, brushY, 0, brushX, brushY, RADIUS);
+  g.addColorStop(0,    'rgba(0,0,0,1)');
+  g.addColorStop(0.45, 'rgba(0,0,0,0.7)');
+  g.addColorStop(0.8,  'rgba(0,0,0,0.3)');
+  g.addColorStop(1,    'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.arc(currentX, currentY, 80, 0, Math.PI * 2); 
+  ctx.arc(brushX, brushY, RADIUS, 0, Math.PI * 2);
   ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
 
-  requestAnimationFrame(drawBrush);
+  requestAnimationFrame(brushLoop);
 }
 
-// 3. Initialize WebGazer on Click (Bypasses Browser Security)
-window.addEventListener('click', async () => {
-  // If it's already running or attempting to load, ignore further clicks
-  if (appState !== 'START' && appState !== 'ERROR') return;
+// ─── Calibration helpers ──────────────────────────────────────────────────────
+function calPixel(idx) {
+  const [rx, ry] = CAL_PTS[idx];
+  return {
+    x: CAL_MARGIN + Math.round(rx * (window.innerWidth  - 2 * CAL_MARGIN)),
+    y: CAL_MARGIN + Math.round(ry * (window.innerHeight - 2 * CAL_MARGIN)),
+  };
+}
 
-  if (typeof window.webgazer === 'undefined') {
-    currentError = "window.webgazer is undefined. Ensure webgazer.js loaded correctly (check browser console for network errors).";
-    appState = 'ERROR';
-    resize(); // Trigger UI update to error state
-    return;
+function showCalPoint(idx) {
+  const { x, y } = calPixel(idx);
+  calDot.style.left = x + 'px';
+  calDot.style.top  = y + 'px';
+  // Restart CSS pulse animation on each new point
+  calDot.style.animation = 'none';
+  void calDot.offsetWidth; // force reflow
+  calDot.style.animation  = '';
+  calLabel.textContent = `Point ${idx + 1} of ${CAL_PTS.length} — look at the dot, then click it`;
+  calSkip.hidden = idx < 4; // "Skip" appears only after first 5 points
+}
+
+function finishCalibration() {
+  calOverlay.style.display = 'none';
+  fillFog();
+  brushX = targetX = window.innerWidth  / 2;
+  brushY = targetY = window.innerHeight / 2;
+  state = 'TRACKING';
+  brushLoop();
+}
+
+// Calibration dot click — let the event bubble so WebGazer records it as
+// a training sample (it listens on document for clicks to build its regression model)
+calDot.addEventListener('click', () => {
+  if (state !== 'CALIBRATING') return;
+  calIdx++;
+  if (calIdx < CAL_PTS.length) {
+    showCalPoint(calIdx);
+  } else {
+    finishCalibration();
   }
+});
 
-  console.log("Mouse clicked! Booting WebGazer...");
-  appState = 'BOOTING';
-  resize(); // Trigger UI update to loading state
+// Skip button — NOT a training sample, so stop propagation
+calSkip.addEventListener('click', e => {
+  e.stopPropagation();
+  if (state !== 'CALIBRATING') return;
+  finishCalibration();
+});
 
-  // Yield to the browser so it can actually render the "Starting camera up..." text 
-  // before WebGazer freezes the main thread during its heavy initialization.
-  await new Promise(resolve => setTimeout(resolve, 100));
+// ─── Start WebGazer (desktop eye tracking) ────────────────────────────────────
+async function startEyeTracking() {
+  state = 'BOOTING';
+  renderOverlay();
+  await new Promise(r => setTimeout(r, 80)); // let the browser paint BOOTING text
 
   try {
-    // Override MediaPipe paths so WebGazer fetches WASM models from a remote
-    // CDN instead of your local server. This prevents Vite from accidentally
-    // returning an HTML page instead of a WASM file.
-    if (window.webgazer.params) {
-      window.webgazer.params.faceMeshSolutionPath = "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh";
+    if (window.webgazer?.params) {
+      // Point at CDN so WebGazer doesn't request WASM files from our own server
+      window.webgazer.params.faceMeshSolutionPath = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh';
+      // Always use fresh calibration — stale session data degrades accuracy
+      window.webgazer.params.saveDataAcrossSessions = false;
     }
-    // Start the tracking model
-    await window.webgazer.setGazeListener(function(data, clock) {
-        if (data == null) return;
-        
+
+    await window.webgazer
+      .setGazeListener(data => {
+        if (!data) return;
         targetX = data.x;
         targetY = data.y;
       })
       .begin();
 
-    console.log("Camera started! WebGazer is active.");
-
-    // Safely hide all default WebGazer UI elements
     const wg = window.webgazer;
-    if (wg.showVideo) wg.showVideo(false);
-    if (wg.showFaceOverlay) wg.showFaceOverlay(false);
-    if (wg.showFaceFeedbackBox) wg.showFaceFeedbackBox(false);
-    if (wg.showPredictionPoints) wg.showPredictionPoints(false);
+    wg.showVideo?.(false);
+    wg.showFaceOverlay?.(false);
+    wg.showFaceFeedbackBox?.(false);
+    wg.showPredictionPoints?.(false);
 
-    appState = 'TRACKING';
-    fillFog(); // Wipe the loading text completely
-    drawBrush(); // Start the painting loop
+    // Begin calibration phase
+    calIdx = 0;
+    state = 'CALIBRATING';
+    calOverlay.style.display = 'block';
+    showCalPoint(0);
 
-  } catch (error) {
-    console.error("WebGazer crashed while trying to start:", error);
-    currentError = error.message || error.toString();
-    appState = 'ERROR';
-    resize(); // Trigger UI update to error state
+  } catch (err) {
+    console.error('WebGazer failed to start:', err);
+    errorMsg = err.message || String(err);
+    state = 'ERROR';
+    renderOverlay();
   }
+}
+
+// ─── Touch mode (mobile — no WebGazer needed) ─────────────────────────────────
+function startTouchMode() {
+  brushX = targetX = window.innerWidth  / 2;
+  brushY = targetY = window.innerHeight / 2;
+  state = 'TOUCH_MODE';
+  fillFog();
+  brushLoop();
+}
+
+// ─── Click / tap — start the experience ───────────────────────────────────────
+window.addEventListener('click', async () => {
+  if (state === 'BOOTING' || state === 'CALIBRATING') return;
+  if (state !== 'START' && state !== 'ERROR') return;
+
+  if (IS_TOUCH) {
+    // Mobile: skip WebGazer, use touch position directly
+    startTouchMode();
+    return;
+  }
+
+  if (typeof window.webgazer === 'undefined') {
+    errorMsg = 'WebGazer did not load — check your network connection and refresh.';
+    state = 'ERROR';
+    renderOverlay();
+    return;
+  }
+
+  await startEyeTracking();
 });
+
+// ─── Touch events (TOUCH_MODE) ────────────────────────────────────────────────
+
+// First finger contact: snap brush instantly so reveal starts immediately
+window.addEventListener('touchstart', e => {
+  if (state === 'START' || state === 'ERROR') {
+    // First tap on mobile starts touch mode (fires before 'click')
+    if (IS_TOUCH) startTouchMode();
+    return;
+  }
+  if (state !== 'TOUCH_MODE') return;
+  const t = e.touches[0];
+  brushX = targetX = t.clientX; // snap — no lerp lag on first contact
+  brushY = targetY = t.clientY;
+}, { passive: true });
+
+// Finger drag: update target (brush lerps toward it each frame)
+document.addEventListener('touchmove', e => {
+  if (state !== 'TOUCH_MODE') return;
+  e.preventDefault(); // prevent page scroll while revealing
+  const t = e.touches[0];
+  targetX = t.clientX;
+  targetY = t.clientY;
+}, { passive: false });

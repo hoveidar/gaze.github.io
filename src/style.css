@@ -1,19 +1,21 @@
+/* ─── Reset & base ────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
 body, html {
   margin: 0;
   padding: 0;
   height: 100%;
-  /* Light background for the text */
   color: #111;
   font-family: sans-serif;
   overflow-x: hidden;
-  /* New: Grid background */
   background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.2) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.2) 1px, transparent 1px),
+    linear-gradient(to right,  rgba(255,255,255,0.2) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.2) 1px, transparent 1px),
     conic-gradient(from 90deg at 40% -25%, #ff0000, #ff00ff, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000);
   background-size: 30px 30px, 30px 30px, 100% 100%;
 }
 
+/* ─── Readable text layer ─────────────────────────────────────────────────── */
 .content {
   padding: 100px 50px;
   max-width: 800px;
@@ -22,16 +24,98 @@ body, html {
   line-height: 1.6;
 }
 
-#webcam {
-  display: none; /* Hide the raw video feed from the UI */
+@media (max-width: 768px) {
+  .content {
+    padding: 60px 24px;
+    font-size: 1.25rem;
+  }
 }
+
+@media (max-width: 480px) {
+  .content {
+    padding: 48px 18px;
+    font-size: 1.1rem;
+  }
+}
+
+/* ─── Fog canvas ──────────────────────────────────────────────────────────── */
+#webcam { display: none; }
 
 #fog-canvas {
   position: fixed;
   top: 0;
   left: 0;
   width: 100vw;
-  height: 100vh;
-  pointer-events: none; /* Let clicks pass to the document so WebGazer can calibrate */
+  height: 100vh;        /* fallback for older browsers */
+  height: 100dvh;       /* correct mobile viewport (excludes browser chrome) */
+  pointer-events: none; /* clicks pass through for WebGazer calibration */
   z-index: 9999;
+}
+
+/* ─── Calibration overlay ─────────────────────────────────────────────────── */
+#cal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+}
+
+#cal-label {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  color: #fff;
+  font-size: 15px;
+  background: rgba(0, 0, 0, 0.65);
+  padding: 8px 18px;
+  border-radius: 20px;
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (max-width: 600px) {
+  #cal-label {
+    font-size: 12px;
+    white-space: normal;
+    text-align: center;
+    max-width: 85vw;
+  }
+}
+
+#cal-skip {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.4);
+  color: #fff;
+  padding: 10px 26px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 15px;
+  transition: background 0.2s;
+}
+#cal-skip:hover  { background: rgba(255,255,255,0.25); }
+#cal-skip:active { background: rgba(255,255,255,0.35); }
+
+/* Calibration dot */
+#cal-dot {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  background: #22ee88;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(34, 238, 136, 0.9);
+  animation: cal-pulse 1.3s ease-out infinite;
+}
+
+@keyframes cal-pulse {
+  0%   { transform: translate(-50%,-50%) scale(1);    box-shadow: 0 0 0 0   rgba(34,238,136,0.6); }
+  65%  { transform: translate(-50%,-50%) scale(1.15); box-shadow: 0 0 0 18px rgba(34,238,136,0);   }
+  100% { transform: translate(-50%,-50%) scale(1);    box-shadow: 0 0 0 0   rgba(34,238,136,0);   }
 }
