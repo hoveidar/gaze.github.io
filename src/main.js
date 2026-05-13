@@ -78,11 +78,10 @@ function drawText(msg, color, sizePx, dy = 0) {
 function renderOverlay() {
   if (state === 'START') {
     fillFog();
-    if (IS_TOUCH) {
-      drawText('Tap here, then drag your finger to reveal the text', 'white', 20);
-    } else {
-      drawText('Click anywhere to start the eye tracker', 'white', 22);
-    }
+    const startMsg = IS_TOUCH
+      ? 'Tap anywhere to start the eye tracker'
+      : 'Click anywhere to start the eye tracker';
+    drawText(startMsg, 'white', 22);
   } else if (state === 'BOOTING') {
     fillFog();
     drawText('Starting camera — allow access when prompted', 'white', 20);
@@ -134,7 +133,8 @@ function showCalPoint(idx) {
   calDot.style.animation = 'none';
   void calDot.offsetWidth; // force reflow
   calDot.style.animation  = '';
-  calLabel.textContent = `Point ${idx + 1} of ${CAL_PTS.length} — look at the dot, then click it`;
+  const action = IS_TOUCH ? 'tap' : 'click';
+  calLabel.textContent = `Point ${idx + 1} of ${CAL_PTS.length} — look at the dot, then ${action} it`;
   calSkip.hidden = idx < 4; // "Skip" appears only after first 5 points
 }
 
@@ -166,18 +166,21 @@ calSkip.addEventListener('click', e => {
   finishCalibration();
 });
 
-// ─── Start WebGazer (desktop eye tracking) ────────────────────────────────────
+// ─── Start WebGazer (all devices — mobile and desktop) ───────────────────────
 async function startEyeTracking() {
   state = 'BOOTING';
   renderOverlay();
-  await new Promise(r => setTimeout(r, 80)); // let the browser paint BOOTING text
+  await new Promise(r => setTimeout(r, 80)); // let browser paint BOOTING text
 
   try {
     if (window.webgazer?.params) {
-      // Point at CDN so WebGazer doesn't request WASM files from our own server
       window.webgazer.params.faceMeshSolutionPath = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh';
-      // Always use fresh calibration — stale session data degrades accuracy
       window.webgazer.params.saveDataAcrossSessions = false;
+      // Hide all WebGazer UI before starting to avoid a flash of the video feed
+      window.webgazer.params.showVideo         = false;
+      window.webgazer.params.showFaceOverlay   = false;
+      window.webgazer.params.showFaceFeedbackBox = false;
+      window.webgazer.params.showGazeDot       = false;
     }
 
     await window.webgazer
@@ -188,6 +191,7 @@ async function startEyeTracking() {
       })
       .begin();
 
+    // Belt-and-suspenders: call the methods too in case params weren't respected
     const wg = window.webgazer;
     wg.showVideo?.(false);
     wg.showFaceOverlay?.(false);
@@ -202,9 +206,16 @@ async function startEyeTracking() {
 
   } catch (err) {
     console.error('WebGazer failed to start:', err);
-    errorMsg = err.message || String(err);
-    state = 'ERROR';
-    renderOverlay();
+    if (IS_TOUCH) {
+      // Camera unavailable or WebAssembly unsupported on this device — fall
+      // back to touch-based reveal so the experience still works
+      console.warn('Eye tracking unavailable, falling back to touch mode');
+      startTouchMode();
+    } else {
+      errorMsg = err.message || String(err);
+      state = 'ERROR';
+      renderOverlay();
+    }
   }
 }
 
@@ -217,36 +228,30 @@ function startTouchMode() {
   brushLoop();
 }
 
-// ─── Click / tap — start the experience ───────────────────────────────────────
+// ─── Click / tap — start the experience (desktop and mobile) ─────────────────
 window.addEventListener('click', async () => {
   if (state === 'BOOTING' || state === 'CALIBRATING') return;
   if (state !== 'START' && state !== 'ERROR') return;
 
-  if (IS_TOUCH) {
-    // Mobile: skip WebGazer, use touch position directly
-    startTouchMode();
-    return;
-  }
-
   if (typeof window.webgazer === 'undefined') {
-    errorMsg = 'WebGazer did not load — check your network connection and refresh.';
-    state = 'ERROR';
-    renderOverlay();
+    if (IS_TOUCH) {
+      // WebGazer failed to load but we're on touch — still give them touch mode
+      startTouchMode();
+    } else {
+      errorMsg = 'WebGazer did not load — check your network connection and refresh.';
+      state = 'ERROR';
+      renderOverlay();
+    }
     return;
   }
 
   await startEyeTracking();
 });
 
-// ─── Touch events (TOUCH_MODE) ────────────────────────────────────────────────
+// ─── Touch events (TOUCH_MODE fallback only) ──────────────────────────────────
 
 // First finger contact: snap brush instantly so reveal starts immediately
 window.addEventListener('touchstart', e => {
-  if (state === 'START' || state === 'ERROR') {
-    // First tap on mobile starts touch mode (fires before 'click')
-    if (IS_TOUCH) startTouchMode();
-    return;
-  }
   if (state !== 'TOUCH_MODE') return;
   const t = e.touches[0];
   brushX = targetX = t.clientX; // snap — no lerp lag on first contact
