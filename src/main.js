@@ -103,7 +103,7 @@ window.addEventListener('click', async () => {
   if (appState !== 'START' && appState !== 'ERROR') return;
 
   if (typeof window.webgazer === 'undefined') {
-    currentError = "window.webgazer is undefined. Ensure webgazer.js is in the public/ folder.";
+    currentError = "window.webgazer is undefined. Ensure webgazer.js loaded correctly (check browser console for network errors).";
     appState = 'ERROR';
     resize(); // Trigger UI update to error state
     return;
