@@ -5,20 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gaze Reveal</title>
     <script src="./webgazer.js"></script>
-    <script type="module" crossorigin src="/gaze.github.io/assets/index-Dv6KzuvY.js"></script>
-    <link rel="stylesheet" crossorigin href="/gaze.github.io/assets/index-CLkGrnkA.css">
+    <script type="module" crossorigin src="/gaze.github.io/assets/index-BGJpFnUO.js"></script>
+    <link rel="stylesheet" crossorigin href="/gaze.github.io/assets/index-DGgGKVBV.css">
   </head>
   <body>
 
+    <!-- Text revealed by gaze — populated with a random passage by main.js -->
     <div class="content">
-      <h1>The Secret Document</h1>
-      <p>This is the hidden text. You can only read this by looking at it directly. The rest of the screen stays completely obscured until your eyes sweep across it.</p>
-      <p>Imagine reading an entire article this way, painting the screen with your attention. It forces absolute focus.</p>
+      <p id="passage-body"></p>
+      <p id="passage-credit" class="credit"></p>
     </div>
 
+    <!-- Fog overlay canvas -->
     <canvas id="fog-canvas"></canvas>
 
-    <!-- Calibration overlay (desktop eye tracking only) -->
+    <!-- Intro / instruction screen (shown before camera starts) -->
+    <div id="intro-screen">
+      <div class="intro-card">
+        <span class="intro-icon">👁</span>
+        <h2>Gaze Reveal</h2>
+        <p class="intro-desc">
+          Your front camera will track where you look.
+          Move your eyes across the screen to paint away the fog
+          and uncover the hidden message beneath.
+        </p>
+        <button id="start-btn">Start Eye Tracker</button>
+        <p class="intro-note">Requires camera access · Chrome, Firefox &amp; Safari supported</p>
+      </div>
+    </div>
+
+    <!-- Calibration overlay (shown after camera starts) -->
     <div id="cal-overlay">
       <p id="cal-label"></p>
       <button id="cal-skip">Skip remaining</button>
